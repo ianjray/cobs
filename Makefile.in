@@ -1,0 +1,71 @@
+.POSIX:
+.SUFFIXES:
+.SUFFIXES: .c .o .uto
+
+VERSION    = 1.0.0
+
+CC         = @CC@
+CCOV       = gcov
+CFLAGS     = @CFLAGS@
+CFLAGS_COV = @CFLAGS_COV@
+CFLAGS_SAN = @CFLAGS_SAN@
+INCLUDEDIR = @PREFIX@/include
+LD         = @LD@
+LIBDIR     = @PREFIX@/lib
+PREFIX     = @PREFIX@
+
+.PHONY: all
+all: libcobs.a test_readme cobs.coverage
+
+libcobs.a: cobs.o
+	$(LD) -r $^ -o $@
+
+test_readme: README.md libcobs.a
+	awk '/```c/{ C=1; next } /```/{ C=0 } C' README.md | sed -e 's#libcobs/##' > test_readme.c
+	$(CC) $(CFLAGS) $(CFLAGS_SAN) -I. test_readme.c cobs.c -o $@
+	./$@
+
+.c.o:
+	$(CC) $(CFLAGS) -c $< -o $@
+
+.c.uto:
+	$(CC) $(CFLAGS) $(CFLAGS_COV) $(CFLAGS_SAN) -c $^ -o $@
+
+cobs.coverage: cobs.uto test_cobs.c
+	$(CC) $(CFLAGS) $(CFLAGS_COV) $(CFLAGS_SAN) $^ -o $@
+	./$@
+	$(CCOV) cobs.c
+	! grep "#####" cobs.c.gcov |grep -ve "// UNREACHABLE$$"
+
+libcobs.pc:
+	( echo 'Name: libcobs' ;\
+	echo 'Version: $(VERSION)' ;\
+	echo 'Description: Consistent Overhead Byte Stuffing' ;\
+	echo 'prefix=$(PREFIX)' ;\
+	echo 'exec_prefix=$${prefix}' ;\
+	echo 'includedir=$${prefix}/include' ;\
+	echo 'libdir=$${prefix}/lib' ;\
+	echo 'Cflags: -I$${includedir}' ;\
+	echo 'Libs: -L$${libdir} -lcobs' ) > $@
+
+.PHONY: install
+install: cobs.h libcobs.a libcobs.pc
+	mkdir -p $(INCLUDEDIR)/libcobs
+	mkdir -p $(LIBDIR)/pkgconfig
+	install -m644 cobs.h $(INCLUDEDIR)/libcobs/cobs.h
+	install -m644 libcobs.a $(LIBDIR)/libcobs.a
+	install -m644 libcobs.pc $(LIBDIR)/pkgconfig/libcobs.pc
+
+.PHONY: uninstall
+uninstall:
+	rm -f $(INCLUDEDIR)/libcobs/cobs.h
+	rm -f $(LIBDIR)/libcobs.a
+	rm -f $(LIBDIR)/pkgconfig/libcobs.pc
+
+.PHONY: clean
+clean:
+	rm -rf libcobs.a libcobs.pc *.o *.uto *.gc?? test_readme* *.coverage
+
+.PHONY: distclean
+distclean: clean
+	rm -f Makefile config.status
